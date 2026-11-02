@@ -1,0 +1,27 @@
+const STARTER=`function calculateTotal(price, quantity, discount) {
+  // ШІ запропонував цей варіант. Перевірте його!
+  return price * quantity - discount;
+}`;
+const STORE='devmate-lab01-v1';const el=id=>document.getElementById(id);
+const editor=el('editor');const saved=(()=>{try{return JSON.parse(localStorage.getItem(STORE)||'{}')}catch{return {}}})();
+editor.value=typeof saved.code==='string'?saved.code:STARTER;
+for(const id of ['bugNote','contractNote','reflection','customTest','customExpected']) if(typeof saved[id]==='string')el(id).value=saved[id];
+let step=0,activeWorker=null,activeTimer=null;
+function save(){try{const data={code:editor.value};for(const id of ['bugNote','contractNote','reflection','customTest','customExpected'])data[id]=el(id).value;localStorage.setItem(STORE,JSON.stringify(data))}catch{el('runFeedback').textContent='Не вдалося зберегти чернетку. Завантажте файл.'}}
+let saveDelay;document.querySelectorAll('textarea,input').forEach(x=>x.addEventListener('input',()=>{clearTimeout(saveDelay);saveDelay=setTimeout(save,250)}));
+function showStep(n){step=Math.max(0,Math.min(4,n));document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',Number(x.dataset.page)===step));document.querySelectorAll('[data-step]').forEach(x=>{const selected=Number(x.dataset.step)===step;x.classList.toggle('active',selected);x.setAttribute('aria-current',selected?'step':'false')});el('stepCount').textContent=`Крок ${step+1} із 5`;el('progressFill').style.width=`${(step+1)*20}%`;el('prevStep').disabled=step===0;el('nextStep').disabled=step===4;el('nextStep').textContent=step===4?'Завершено':'Наступний крок →';save()}
+document.querySelectorAll('[data-step]').forEach(x=>x.addEventListener('click',()=>showStep(Number(x.dataset.step))));el('prevStep').addEventListener('click',()=>showStep(step-1));el('nextStep').addEventListener('click',()=>showStep(step+1));
+function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function terminate(){if(activeWorker){activeWorker.terminate();activeWorker=null}if(activeTimer){clearTimeout(activeTimer);activeTimer=null}}
+function run(mode,args,expected){terminate();const feedback=mode==='custom'?el('customResult'):el('runFeedback');const output=el('testResults');if(mode==='basic')output.innerHTML='';feedback.textContent='Виконання тестів…';el('runTests').disabled=true;el('customRun').disabled=true;let worker;
+try{worker=new Worker('../../assets/test-worker.js')}catch(e){feedback.textContent='Не вдалося запустити Worker. Відкрийте сайт через HTTP(S), а не file://.';el('runTests').disabled=false;el('customRun').disabled=false;return}
+activeWorker=worker;function finish(){terminate();el('runTests').disabled=false;el('customRun').disabled=false}
+activeTimer=setTimeout(()=>{finish();feedback.textContent='Час виконання перевищив 2 секунди. Перевірте код на нескінченний цикл.'},2000);
+worker.onmessage=e=>{if(worker!==activeWorker)return;const data=e.data;finish();if(!data.ok){feedback.textContent='Помилка виконання: '+data.error;return}const count=data.results.filter(r=>r.passed).length;feedback.textContent=`Успішно: ${count} із ${data.results.length}`;if(mode==='custom'){feedback.textContent+=data.results[0].passed?' · PASS':' · FAIL';feedback.textContent+=` · Отримано: ${data.results[0].observed}`;return}output.innerHTML=data.results.map(r=>`<div class="result ${r.passed?'pass':'fail'}"><strong>${r.passed?'✓ PASS':'✕ FAIL'} — ${escapeHTML(r.name)}</strong><small>Очікується: ${escapeHTML(r.expected)} · Отримано: ${escapeHTML(r.observed)}</small></div>`).join('')};
+worker.onerror=()=>{finish();feedback.textContent='Помилка виконання. Перевірте синтаксис JavaScript.'};worker.postMessage({code:editor.value,mode,args,expected})}
+el('runTests').addEventListener('click',()=>run('basic'));
+el('customRun').addEventListener('click',()=>{const raw=el('customTest').value.split(',').map(s=>s.trim());if(raw.length!==3||raw.some(x=>x===''||!Number.isFinite(Number(x)))){el('customResult').textContent='Введіть рівно три числові аргументи через кому.';return}const v=el('customExpected').value.trim().toLowerCase();let expected;if(v==='помилка'||v==='виняток')expected={kind:'throws'};else if(v!==''&&Number.isFinite(Number(v)))expected={kind:'value',value:Number(v)};else{el('customResult').textContent='Вкажіть очікуване число або слово «помилка».';return}run('custom',raw.map(Number),expected)});
+function download(name,content,type='text/plain;charset=utf-8'){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+el('downloadCode').addEventListener('click',()=>download('calculateTotal.js',editor.value+'\n','text/javascript;charset=utf-8'));
+el('reportDownload').addEventListener('click',()=>download('DevMate_Lab01_report.txt',`DevMate — LAB 01\n\nЗнайдена помилка:\n${el('bugNote').value}\n\nРозрахунок за контрактом:\n${el('contractNote').value}\n\nВласний тест:\ncalculateTotal(${el('customTest').value}) => ${el('customExpected').value}\n\nРефлексія:\n${el('reflection').value}\n`));
+el('resetCode').addEventListener('click',()=>{if(!confirm('Скинути код до початкового варіанта? Зміни редактора буде втрачено.'))return;editor.value=STARTER;el('testResults').innerHTML='';el('runFeedback').textContent='Початковий код відновлено.';save()});showStep(0);
